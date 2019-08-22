@@ -4,7 +4,7 @@ from naoqi import ALProxy
 
 class ConfigureNao(object):
     def __init__(self, IP, PORT=9559):
-        self.IP = "192.168.137.117"
+        self.IP = IP
         self.PORT = PORT
         try:
             self.cameraProxy = ALProxy("ALVideoDevice", self.IP, self.PORT)
