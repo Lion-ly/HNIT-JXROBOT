@@ -14,7 +14,8 @@ import os
 import threading
 
 from ConfigureNao import *
-from visualTask import *
+# from visualTask import *
+from VisualDetection import *
 import vision_definitions as vd
 from stepStatus import *
 
@@ -109,7 +110,7 @@ class GolfGame(ConfigureNao):
             self.tts.say("no stick")
             return False
 
-    def findStcik2(self, pitchAngle=-10, yawAngle=0, isShowFlag=False):
+    def findStick2(self, pitchAngle=-10, yawAngle=0, isShowFlag=False):
         Names = ["HeadPitch", "HeadYaw"]
         Angles = [pitchAngle * rad, yawAngle * rad]
         self.motionProxy.angleInterpolationWithSpeed(Names, Angles, 0.1)
@@ -157,7 +158,12 @@ class GolfGame(ConfigureNao):
         self.Batting2(hitSpeed)
         self.ReceivingPole()
 
-    def moveheadToFindball(self, pitchAngles=[-10], yawAngles=[-40, -15, 15, 40]):
+    def moveheadToFindball(self, pitchAngles=None, yawAngles=None):
+        if pitchAngles is None:
+            pitchAngles = [-10]
+        if yawAngles is None:
+            yawAngles = [-40, -15, 15, 40]
+
         isfindBall = False
         for pitchAngle in pitchAngles:
             for yawAngle in yawAngles:
@@ -202,7 +208,6 @@ class GolfGame(ConfigureNao):
             if isfindLandmark:
                 targetDis = self.landmark_info[2]
                 targetAngle = self.landmark_info[3]
-                cmpensateAngle = 10 * rad
                 break
             isfindStick = self.findStick(pitchAngle=0, yawAngle=yawAngle)
             if isfindStick:
@@ -215,7 +220,6 @@ class GolfGame(ConfigureNao):
 
     def walkToBall(self, min_ball_d=0.4, max_ball_theta=0.15):
         isfindBall = self.findball()
-        degree = 0
         if isfindBall is False:
             while True:
                 isfindBall = self.moveheadToFindball(pitchAngles=[-20, -15, 0, 10, 20])
@@ -418,20 +422,25 @@ class GolfGame(ConfigureNao):
     def moveCircleWithTarget(self, target_info, ball_d):
         MCAngle = 0 * rad
         # MCAngle = 0 * rad
+        target_ball_robotAngle = 0
+        target_ball_Dis = 0
         if target_info[0] > 0:
             target_ball_Dis = (target_info[0] ** 2 + ball_d ** 2 - 2 * target_info[0] * ball_d * math.cos(
                 target_info[1])) ** 0.5
             target_ball_robotAngle = math.acos(
-                (-target_info[0] ** 2 + ball_d ** 2 + target_ball_Dis ** 2) / (2 * ball_d * target_ball_Dis)) - \
-                                     target_info[2]
+                (-target_info[0] ** 2 + ball_d ** 2 + target_ball_Dis ** 2) / (
+                        2 * ball_d * target_ball_Dis)) - target_info[2]
 
         elif target_info[0] < 0:
             target_ball_robotAngle = math.pi - target_info[2] * rad - abs(target_info[1]) - MCAngle
             stickAngle = abs(target_info[1])
             target_ball_Dis = (ball_d * math.sin(stickAngle)) / math.sin(target_info[2] * rad)
 
+        move_d = None
+        moveAngle = None
+        nextAngle = None
+
         if target_info[1] > 0:
-            self.isbackhangFlag = False
             if 0 <= target_ball_robotAngle < 0.5 * math.pi:
                 moveAngle = 0.5 * math.pi - target_ball_robotAngle
                 move_d = (ball_d ** 2 + ball_d ** 2 - 2 * ball_d * ball_d * math.cos(moveAngle)) ** 0.5
@@ -449,7 +458,6 @@ class GolfGame(ConfigureNao):
             nextAngle = math.atan(target_ball_Dis / ball_d)
 
         elif target_info[1] < 0:
-            self.isbackhangFlag = True
             if 0 <= target_ball_robotAngle < 0.5 * math.pi:
                 moveAngle = 0.5 * math.pi - target_ball_robotAngle
                 move_d = (ball_d ** 2 + ball_d ** 2 - 2 * ball_d * ball_d * math.cos(moveAngle)) ** 0.5
@@ -512,15 +520,15 @@ class GolfGame(ConfigureNao):
             Kpy = 0.0008
 
             if abs(radius - best_ball_radius) < 30:
-                if (abs(bias_x) < 40 and abs(bias_y) < 20):
+                if abs(bias_x) < 40 and abs(bias_y) < 20:
                     print("bias_x:", bias_x)
                     print("bias_y:", bias_y)
                     self.tts.say("I am OK")
                     return True
                 else:
                     move_x = Kpx * bias_x
-                    move_x = -1.0 / 100 if (move_x < 0 and move_x > -1.0 / 100) else move_x
-                    move_x = 1.0 / 100 if (move_x > 0 and move_x < 1.0 / 100) else move_x
+                    move_x = -1.0 / 100 if (-1.0 / 100 < move_x < 0) else move_x
+                    move_x = 1.0 / 100 if (0 < move_x < 1.0 / 100) else move_x
                     if bias_x > 15:
                         self.motionProxy.moveTo(-move_x, 0, 0, self.walkconfiguration.WalkLineLittle_blue())
                         time.sleep(0.5)
@@ -533,13 +541,14 @@ class GolfGame(ConfigureNao):
                         print("move_x2", -move_x)
 
                     move_y = Kpy * bias_y
-                    move_y = -1.0 / 100 if (move_y < 0 and move_y > -1.0 / 100) else move_y
-                    move_y = 1.0 / 100 if (move_y > 0 and move_y < 1.0 / 100) else move_y
+                    move_y = -1.0 / 100 if (-1.0 / 100 < move_y < 0) else move_y
+                    move_y = 1.0 / 100 if (0 < move_y < 1.0 / 100) else move_y
                     if abs(bias_y) > 15:
                         self.motionProxy.moveTo(0, -move_y, 0, self.walkconfiguration.WalkSideLittle_blue())
                         time.sleep(0.5)
                         print("move_y1:", -move_y)
 
+    # noinspection PyMethodMayBeStatic
     def compensateAngle1(self, hitballtimes):
         if hitballtimes == 1:
             compensateAngle1 = 5
@@ -565,28 +574,30 @@ class GolfGame(ConfigureNao):
     def hitball3(self, hitspeed):
         if self.landmark_info[3] > 0:
             self.forehandToHitball(hitspeed)
+            time.sleep(3)
             self.motionProxy.moveTo(0, 0, 80 * rad, self.walkconfiguration.WalkCircleLittle_blue())
         elif self.landmark_info[3] < 0:
             self.backhandToHitball(hitspeed)
             self.motionProxy.moveTo(0, 0, -80 * rad, self.walkconfiguration.WalkCircleLittle_blue())
+            time.sleep(3)
         elif self.stickAngle > 0:
             self.forehandToHitball(hitspeed)
+            time.sleep(3)
             self.motionProxy.moveTo(0, 0, 80 * rad, self.walkconfiguration.WalkCircleLittle_blue())
         elif self.stickAngle < 0:
             self.backhandToHitball(hitspeed)
+            time.sleep(3)
             self.motionProxy.moveTo(0, 0, -80 * rad, self.walkconfiguration.WalkCircleLittle_blue())
 
     def trianglocation(self):
         locateTime = 0
-        target_info = [0, 0, 0]
-        location_info = [0, 0, 0]
         yawAnglelast = 0
         while True:
             if locateTime == 0:
                 self.moveheadToFindball(pitchAngles=[20, 10, 0], yawAngles=[0, -15, -20, 15, -20])
                 self.motionProxy.moveTo(0, 0, self.ball_info[2], self.walkconfiguration.WalkCircleLittle_blue())
                 print("move angle:", self.ball_info[2])
-                yawAnglelist = [0, -100, -80, -40, 100, 80, 40]
+                yawAnglelist = [0, +40, +80, +100, -40, -80, -100]
             else:
                 yawAnglelist = [yawAnglelast + 80, yawAnglelast + 60, yawAnglelast + 20, yawAnglelast,
                                 yawAnglelast - 20,
@@ -619,10 +630,9 @@ class GolfGame(ConfigureNao):
         self.motionProxy.moveTo(0, 0, 80 * rad, self.walkconfiguration.WalkCircleLittle_blue())
         time.sleep(0.5)
 
-    def WalkToStick(self, distance=2, walktimes=4, min_stick_angle=10, max_stick_angle=15):
+    def WalkToStick(self, distance=2.0, walktimes=4, min_stick_angle=10, max_stick_angle=15):
         min_stick_angle = min_stick_angle * rad
         max_stick_angle = max_stick_angle * rad
-        isfind = False
         for i in range(walktimes):
             isfind = self.moveheadTofindstick2(yawAngles=[0, 40, -40])
             self.motionProxy.angleInterpolationWithSpeed("HeadYaw", 0, 0.1)
@@ -679,7 +689,6 @@ class GolfGame(ConfigureNao):
         self.tts.say("Game Task Two")
         self.hitballtimes += 2
         print("hitballtimes1", self.hitballtimes)
-        isfindball = False
         FrontFlagTrue = 0
         MiddleFlagTrue = 0
         while True:
@@ -698,7 +707,7 @@ class GolfGame(ConfigureNao):
                 self.ReceivingPole()
                 break
         self.gameTask_2WalkTask()
-        self.WalkToStick(distance=2, walktimes=4, min_stick_angle=12, max_stick_angle=17)
+        self.WalkToStick(distance=1.5, walktimes=4, min_stick_angle=12, max_stick_angle=17)
         while True:
             print("hitballtimes2", self.hitballtimes)
             isfindball = self.moveheadToFindball(pitchAngles=[20, 10, 0, -10, -20])
@@ -722,7 +731,6 @@ class GolfGame(ConfigureNao):
 
     def gameTask_3(self):
         self.tts.say("Game Task Three")
-        isfindball = False
         FrontFlagTrue = 0
         self.hitballtimes += 1
         MiddleFlagTrue = 0
@@ -738,7 +746,7 @@ class GolfGame(ConfigureNao):
                 MiddleFlagTrue = 1
             elif FrontFlagTrue == 1 and MiddleFlagTrue == 1 and RearFlag == 1:
                 self.AddressingTheBall()
-                self.Batting(0.73)
+                self.Batting(0.78)
                 self.ReceivingPole()
                 break
         self.motionProxy.setMoveArmsEnabled(False, False)
@@ -752,12 +760,13 @@ class GolfGame(ConfigureNao):
         while True:
             if self.hitballtimes == 2:
                 self.motionProxy.setMoveArmsEnabled(False, False)
-                self.motionProxy.moveTo(0.70, 0, 0, self.walkconfiguration.WalkLineLittle_blue())
+                self.motionProxy.moveTo(1.25, 0, 0, self.walkconfiguration.WalkLineLittle_blue())
                 self.flag = True
             self.walkToBall3()
+            self.tts.say("walk over")
             self.trianglocation()
             if self.hitballtimes == 1:
-                self.hitball3(0.65)
+                self.hitball3(0.60)
             else:
                 self.hitball3(0.65)
             self.hitballtimes += 1
@@ -877,8 +886,7 @@ class GolfGame(ConfigureNao):
             motion = ALProxy("ALMotion", self.IP, self.PORT)
             motion.angleInterpolationBezier(names, times, keys)
         except BaseException, err:
-            print
-            err
+            print(err)
 
     def HoldingPole(self):
         names = list()
@@ -1039,8 +1047,7 @@ class GolfGame(ConfigureNao):
             motion = ALProxy("ALMotion", self.IP, self.PORT)
             motion.angleInterpolationBezier(names, times, keys)
         except BaseException, err:
-            print
-            err
+            print(err)
 
     def AddressingTheBall(self):
         names = list()
@@ -1112,8 +1119,7 @@ class GolfGame(ConfigureNao):
             motion = ALProxy("ALMotion", self.IP, self.PORT)
             motion.angleInterpolationBezier(names, times, keys)
         except BaseException, err:
-            print
-            err
+            print(err)
 
     def Batting(self, speed):
         names = list()
@@ -1172,8 +1178,7 @@ class GolfGame(ConfigureNao):
             motion = ALProxy("ALMotion", self.IP, self.PORT)
             motion.angleInterpolationBezier(names, times, keys)
         except BaseException, err:
-            print
-            err
+            print(err)
 
     def ReceivingPole(self):
         names = list()
@@ -1262,8 +1267,7 @@ class GolfGame(ConfigureNao):
             motion = ALProxy("ALMotion", self.IP, self.PORT)
             motion.angleInterpolationBezier(names, times, keys)
         except BaseException, err:
-            print
-            err
+            print(err)
 
     def AddressingTheBall2(self):
         names = list()
@@ -1366,8 +1370,7 @@ class GolfGame(ConfigureNao):
             motion = ALProxy("ALMotion", self.IP, self.PORT)
             motion.angleInterpolationBezier(names, times, keys)
         except BaseException, err:
-            print
-            err
+            print(err)
 
     def Batting2(self, speed):
         names = list()
@@ -1426,8 +1429,7 @@ class GolfGame(ConfigureNao):
             motion = ALProxy("ALMotion", self.IP, self.PORT)
             motion.angleInterpolationBezier(names, times, keys)
         except BaseException, err:
-            print
-            err
+            print(err)
 
 
 def run():
